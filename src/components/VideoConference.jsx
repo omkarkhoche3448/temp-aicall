@@ -17,7 +17,11 @@ const VideoConference = () => {
     { name: "Alex Johnson", email: "alex.j@example.com" },
     { name: "Sarah Wilson", email: "sarah.w@example.com" }
   ];
-
+  const [keywords, setKeywords] = useState([
+    { keyword: "machine learning", isIncluded: false },
+    { keyword: "deep learning", isIncluded: false },
+    { keyword: "computer vision", isIncluded: false }
+  ]);
   const [showAlert, setShowAlert] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState('');
   const [meetingLink, setMeetingLink] = useState('');
@@ -33,60 +37,72 @@ const VideoConference = () => {
   const [error, setError] = useState(null);
   const [hasPermissions, setHasPermissions] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
+  const [meetingidd, setMeetingidd] = useState(Math.random().toString(36).substring(7));
   const [transcriptions, setTranscriptions] = useState([]);
-  const [meetingidd,setMeetingidd]=useState(Math.random().toString(36).substring(7));
+  const [combinedRepText, setCombinedRepText] = useState('');
 
   const clientRef = useRef(null);
+  const updateCombinedText = (transcriptions) => {
+    const repTexts = transcriptions
+      .filter(t => t.speaker === 'representative')
+      .map(t => t.text)
+      .join(' ');
+    setCombinedRepText(repTexts);
+    return repTexts;
+  };
+
+  // Function to check keywords in text
+  const checkKeywords = (text) => {
+    return keywords.map(kw => ({
+      ...kw,
+      isIncluded: text.toLowerCase().includes(kw.keyword.toLowerCase())
+    }));
+  };
+
+  // Effect for periodic keyword checking
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const combinedText = updateCombinedText(transcriptions);
+      const updatedKeywords = checkKeywords(combinedText);
+      setKeywords(updatedKeywords);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [transcriptions]);
 
   // In VideoConference.jsx, update the useTranscription hook implementation:
 
-const { transcriptionEnabled, startTranscription, stopTranscription } = useTranscription({
-  isHost: true,
-  onTranscriptionUpdate: async (transcription) => {
-    try {
-      // Extract text from transcription object
-      const text = transcription?.text?.text || transcription?.text || '';
-      
-      // Format the transcription data
-      const transcriptionData = {
-        meetingId: meetingidd,
-        transcription: {
-          text: text,
-          timestamp: new Date().toISOString(),
-          speaker: 'representative' // or 'host'
-        }
-      };
+  const { transcriptionEnabled, startTranscription, stopTranscription } = useTranscription({
+    isHost: true,
+    onTranscriptionUpdate: async (transcription) => {
+      try {
+        const text = transcription?.text?.text || transcription?.text || '';
+        
+        const transcriptionData = {
+          meetingId: meetingidd,
+          transcription: {
+            text: text,
+            timestamp: new Date().toISOString(),
+            speaker: 'representative'
+          }
+        };
 
-      console.log('[Representative] Sending transcription:', transcriptionData);
+        const response = await fetch('https://vultr-backend-server.onrender.com/api/transcription', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(transcriptionData)
+        });
 
-      // Send to backend API
-      const response = await fetch('https://vultr-backend-server.onrender.com/api/transcription', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(transcriptionData)
-      });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        setTranscriptions(prev => [...prev, transcriptionData.transcription]);
+      } catch (error) {
+        console.error('Error saving transcription:', error);
       }
-
-      // Update local state
-      setTranscriptions(prev => [...prev, {
-        text: text,
-        timestamp: transcriptionData.transcription.timestamp,
-        isHost: true,
-        channelName: activeCall?.channelName
-      }]);
-
-      console.log('[Representative] Transcription sent successfully');
-
-    } catch (error) {
-      console.error('Error saving transcription:', error);
     }
-  },
-});
+  });
 
   const checkPermissions = async () => {
     try {
@@ -444,28 +460,23 @@ const { transcriptionEnabled, startTranscription, stopTranscription } = useTrans
     }
   };
 
-  const TranscriptionPanel = () => (
-    <div className="transcription-panel">
-      <h3>Live Transcription</h3>
-      <div className="transcription-messages">
-        {transcriptions.map((t, i) => (
-          <div key={i} className={`message ${t.isHost ? 'host' : 'consumer'}`}>
-            <div className="message-header">
-              <span className="timestamp">
-                {new Date(t.timestamp).toLocaleTimeString()}
-              </span>
-              <span className="speaker">
-                {t.isHost ? 'Representative' : 'Consumer'}
-              </span>
-            </div>
-            <div className="message-content">
-              {typeof t.text === 'object' ? t.text.text : t.text}
-            </div>
+  const KeywordPanel = () => (
+    <div className="keyword-panel">
+      <h3>Topic Coverage</h3>
+      <div className="keyword-list">
+        {keywords.map((kw, index) => (
+          <div
+            key={index}
+            className={`keyword-item ${kw.isIncluded ? 'included' : 'not-included'}`}
+          >
+            <span>{kw.keyword}</span>
+            <span>{kw.isIncluded ? '✓' : '×'}</span>
           </div>
         ))}
       </div>
     </div>
   );
+
 
   return (
     <div className="video-conference">
@@ -581,8 +592,7 @@ const { transcriptionEnabled, startTranscription, stopTranscription } = useTrans
   ))}
 </div>
 )}
-
-<TranscriptionPanel />
+<KeywordPanel />
 </div>
 );
 };
