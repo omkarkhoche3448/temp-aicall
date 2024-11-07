@@ -52,6 +52,26 @@ const VideoConference = () => {
   };
   const getAISuggestions = async (transcriptions) => {
     try {
+      // Only process if we have new transcriptions within the last 10 seconds
+      const currentTime = new Date();
+      const recentTranscriptions = transcriptions.filter(t => 
+        new Date(t.timestamp) > new Date(currentTime - 10000)
+      );
+
+      if (recentTranscriptions.length === 0) {
+        // If no new content, add motivational message
+        const motivationalMessages = [
+          "You're making great progress!",
+          "Keep the conversation flowing naturally",
+          "Your approach is working well",
+          "Building great rapport with customer",
+          "Excellent listening skills demonstrated"
+        ];
+        const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+        setAiSuggestions(prev => [randomMessage, ...prev].slice(0, 10));
+        return;
+      }
+
       // Format transcriptions by speaker
       const formattedChat = transcriptions.reduce((acc, curr) => {
         const key = curr.speaker;
@@ -62,26 +82,22 @@ const VideoConference = () => {
         });
         return acc;
       }, {});
-  
-      // Sort transcriptions by timestamp
-      Object.keys(formattedChat).forEach(key => {
-        formattedChat[key].sort((a, b) => 
-          new Date(b.timestamp) - new Date(a.timestamp)
-        );
-      });
-  
-      // Prepare prompt for Vultr LLM
+
+      // Prepare focused prompt for concise suggestions
       const messages = [
         {
           role: "system",
-          content: "You are an AI assistant helping to analyze a conversation and provide suggestions for the consumer."
+          content: `You are a sales coach providing very brief, actionable suggestions (5-6 words max).
+            Focus on customer psychology and closing techniques.
+            Each suggestion must be immediately actionable.
+            Do not explain - just provide the direct suggestion.`
         },
         {
           role: "user",
           content: JSON.stringify(formattedChat)
         }
       ];
-  
+
       const response = await fetch('https://api.vultrinference.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -91,20 +107,34 @@ const VideoConference = () => {
         body: JSON.stringify({
           model: "llama2-13b-chat-Q5_K_M",
           messages: messages,
-          max_tokens: 1024,
-          temperature: 0.8,
+          max_tokens: 256, // Reduced for shorter responses
+          temperature: 0.7,
           top_k: 40,
           top_p: 0.9
         })
       });
-  
+
       const data = await response.json();
-      const suggestions = data.choices[0].message.content;
-      setAiSuggestions(suggestions.split('\n').filter(s => s.trim()));
+      const newSuggestion = data.choices[0].message.content.split('\n')[0].trim();
+      
+      // Add new suggestion to the top of the list, maintain last 10
+      setAiSuggestions(prev => [newSuggestion, ...prev].slice(0, 10));
+      setLastProcessedTime(currentTime);
     } catch (error) {
       console.error('Error getting AI suggestions:', error);
     }
   };
+
+  // Poll for new suggestions every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (transcriptions.length > 0) {
+        getAISuggestions(transcriptions);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [transcriptions]);
 
 
   // Function to check keywords in text
@@ -558,15 +588,18 @@ const VideoConference = () => {
       </div>
       
       {/* AI Suggestions Section */}
-      <div className="suggestions-section">
-        <h3>AI Suggestions</h3>
-        <div className="suggestions-list">
+      <div className="ai-suggestions-panel">
+        <h3>Real-time Coaching Tips</h3>
+        <ul className="suggestions-list">
           {aiSuggestions.map((suggestion, index) => (
-            <div key={index} className="suggestion-item">
+            <li 
+              key={index} 
+              className={index === 0 ? 'latest-suggestion' : 'previous-suggestion'}
+            >
               {suggestion}
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </div>
   );
