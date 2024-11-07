@@ -4,6 +4,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import { Alert, AlertDescription } from './Alert';
 import './VideoConference.css';
 import useTranscription from './useTranscription';
+import ChatWidget from './ChatWidget';
 
 
 const VideoConference = () => {
@@ -720,6 +721,7 @@ const VideoConference = () => {
 </div>
 )}
 <KeywordPanel />
+<ChatWidget />
 </div>
 );
 };

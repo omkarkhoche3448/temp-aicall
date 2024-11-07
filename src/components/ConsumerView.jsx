@@ -325,7 +325,7 @@ const ConsumerView = () => {
       </div>
     );
   }
-
+  
   return (
     <div className="consumer-view">
       {error ? (
