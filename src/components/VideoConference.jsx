@@ -40,7 +40,7 @@ const VideoConference = () => {
   const [meetingidd, setMeetingidd] = useState(Math.random().toString(36).substring(7));
   const [transcriptions, setTranscriptions] = useState([]);
   const [combinedRepText, setCombinedRepText] = useState('');
-
+  const [aiSuggestions, setAiSuggestions] = useState([]);
   const clientRef = useRef(null);
   const updateCombinedText = (transcriptions) => {
     const repTexts = transcriptions
@@ -50,6 +50,62 @@ const VideoConference = () => {
     setCombinedRepText(repTexts);
     return repTexts;
   };
+  const getAISuggestions = async (transcriptions) => {
+    try {
+      // Format transcriptions by speaker
+      const formattedChat = transcriptions.reduce((acc, curr) => {
+        const key = curr.speaker;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push({
+          timestamp: curr.timestamp,
+          text: curr.text
+        });
+        return acc;
+      }, {});
+  
+      // Sort transcriptions by timestamp
+      Object.keys(formattedChat).forEach(key => {
+        formattedChat[key].sort((a, b) => 
+          new Date(b.timestamp) - new Date(a.timestamp)
+        );
+      });
+  
+      // Prepare prompt for Vultr LLM
+      const messages = [
+        {
+          role: "system",
+          content: "You are an AI assistant helping to analyze a conversation and provide suggestions for the consumer."
+        },
+        {
+          role: "user",
+          content: JSON.stringify(formattedChat)
+        }
+      ];
+  
+      const response = await fetch('https://api.vultrinference.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': '47QNM43RTTG3D52ZECKSIJDLUY5L242XJCGQ'
+        },
+        body: JSON.stringify({
+          model: "llama2-13b-chat-Q5_K_M",
+          messages: messages,
+          max_tokens: 1024,
+          temperature: 0.8,
+          top_k: 40,
+          top_p: 0.9
+        })
+      });
+  
+      const data = await response.json();
+      const suggestions = data.choices[0].message.content;
+      setAiSuggestions(suggestions.split('\n').filter(s => s.trim()));
+    } catch (error) {
+      console.error('Error getting AI suggestions:', error);
+    }
+  };
+
 
   // Function to check keywords in text
   const checkKeywords = (text) => {
@@ -69,6 +125,29 @@ const VideoConference = () => {
 
     return () => clearInterval(interval);
   }, [transcriptions]);
+  useEffect(() => {
+    const fetchTranscriptionsAndSuggestions = async () => {
+      try {
+        const response = await fetch(`https://vultr-backend-server.onrender.com/api/transcription/${meetingidd}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          setTranscriptions(data.data.transcriptions);
+          await getAISuggestions(data.data.transcriptions);
+        }
+      } catch (error) {
+        console.error('Error fetching transcriptions:', error);
+      }
+    };
+  
+    const interval = setInterval(() => {
+      if (activeCall) {
+        fetchTranscriptionsAndSuggestions();
+      }
+    }, 10000);
+  
+    return () => clearInterval(interval);
+  }, [activeCall, meetingidd]);
 
   // In VideoConference.jsx, update the useTranscription hook implementation:
 
@@ -462,17 +541,32 @@ const VideoConference = () => {
 
   const KeywordPanel = () => (
     <div className="keyword-panel">
-      <h3>Topic Coverage</h3>
-      <div className="keyword-list">
-        {keywords.map((kw, index) => (
-          <div
-            key={index}
-            className={`keyword-item ${kw.isIncluded ? 'included' : 'not-included'}`}
-          >
-            <span>{kw.keyword}</span>
-            <span>{kw.isIncluded ? '✓' : '×'}</span>
-          </div>
-        ))}
+      {/* Keywords Section */}
+      <div className="keywords-section">
+        <h3>Topic Coverage</h3>
+        <div className="keyword-list">
+          {keywords.map((kw, index) => (
+            <div
+              key={index}
+              className={`keyword-item ${kw.isIncluded ? 'included' : 'not-included'}`}
+            >
+              <span>{kw.keyword}</span>
+              <span>{kw.isIncluded ? '✓' : '×'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* AI Suggestions Section */}
+      <div className="suggestions-section">
+        <h3>AI Suggestions</h3>
+        <div className="suggestions-list">
+          {aiSuggestions.map((suggestion, index) => (
+            <div key={index} className="suggestion-item">
+              {suggestion}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
