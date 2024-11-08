@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from './Alert';
 import './VideoConference.css';
 import useTranscription from './useTranscription';
 import ChatWidget from './ChatWidget';
+import { AlertCircle } from 'lucide-react';
 
 
 const VideoConference = () => {
@@ -43,6 +44,7 @@ const VideoConference = () => {
   const [combinedRepText, setCombinedRepText] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const clientRef = useRef(null);
+  const [showDisconnectAlert, setShowDisconnectAlert] = useState(false);
   const updateCombinedText = (transcriptions) => {
     const repTexts = transcriptions
       .filter(t => t.speaker === 'representative')
@@ -242,9 +244,11 @@ const VideoConference = () => {
           addDebugLog(`Connection state changed from ${prevState} to ${curState}`);
           
           if (curState === 'DISCONNECTED') {
-            setError('Connection lost. Please try rejoining the call.');
-            leaveChannel();
-          }
+  setShowDisconnectAlert(true);
+  leaveChannel();
+  // Auto-hide alert after 5 seconds
+  setTimeout(() => setShowDisconnectAlert(false), 5000);
+}
         });
 
         agoraClient.on('error', (err) => {
@@ -590,7 +594,7 @@ const VideoConference = () => {
       
       {/* AI Suggestions Section */}
       <div className="ai-suggestions-panel">
-        <h3>Real-time Coaching Tips</h3>
+        <h3>AI Suggestions</h3>
         <ul className="suggestions-list">
           {aiSuggestions.map((suggestion, index) => (
             <li 
@@ -614,26 +618,24 @@ const VideoConference = () => {
         <div className="consumer-list">
           {consumers.map((consumer) => (
             <div key={consumer.email} className="consumer-card">
-              <h3 className="consumer-name">{consumer.name}</h3>
-              <p className="consumer-email">{consumer.email}</p>
+            <div className="consumer-info">
+              <div className="consumer-details">
+                <h3 className="consumer-name">{consumer.name}</h3>
+                <p className="consumer-email">{consumer.email}</p>
+              </div>
               <button
                 onClick={() => generateMeetingLink(consumer.email)}
                 disabled={cooldowns[consumer.email] > 0 || activeCall}
-                className="invite-button"
+                className="invite-button-icon"
               >
                 {cooldowns[consumer.email] > 0 ? (
-  <>
-    <Timer size={16} />
-    {cooldowns[consumer.email]}s
-  </>
-) : (
-  <>
-    <Send size={16} />
-    {activeCall ? 'In Call' : 'Invite'}
-  </>
-)}
-</button>
-</div>
+                  <Timer size={16} />
+                ) : (
+                  <Send size={16} />
+                )}
+              </button>
+            </div>
+          </div>
 ))}
 </div>
 </div>
@@ -712,17 +714,24 @@ const VideoConference = () => {
 </Alert>
 )}
 
-{/* Debug Log */}
+{/* Debug Log
 {process.env.NODE_ENV === 'development' && (
 <div className="debug-log">
   {debugLog.map((log, i) => (
     <div key={i}>{log}</div>
   ))}
 </div>
-)}
+)} */}
 <KeywordPanel />
 <ChatWidget />
+{showDisconnectAlert && (
+  <div className="alert-notification">
+    <AlertCircle size={20} />
+    Connection lost. Please try rejoining the call.
+  </div>
+)}
 </div>
+
 );
 };
 
